@@ -22,7 +22,7 @@ __metaclass__ = type
 import os
 import sys
 
-from collections import defaultdict, MutableMapping
+from collections import defaultdict, MutableMapping, Sequence
 
 try:
     from hashlib import sha1
@@ -340,6 +340,12 @@ class VariableManager:
                     try:
                         for vars_file in vars_file_list:
                             vars_file = templar.template(vars_file)
+                            if not (isinstance(vars_file, Sequence)):
+                                raise AnsibleError(
+                                    "Invalid vars_files entry found: %r\n"
+                                    "vars_files entries should be either a string type or "
+                                    "a list of string types after template expansion" % vars_file
+                                )
                             try:
                                 data = preprocess_vars(self._loader.load_from_file(vars_file, unsafe=True))
                                 if data is not None:
@@ -492,10 +498,19 @@ class VariableManager:
                     # This task will be skipped later due to this, so we just setup
                     # a dummy array for the later code so it doesn't fail
                     items = [None]
+                # Update task.loop with templated items, this ensures that delegate_to+loop
+                # doesn't produce different restuls than TaskExecutor which may reprocess the loop
+                # Set loop_with to None, so we don't do extra unexpected processing on the cached items later
+                # in TaskExecutor
+                task.loop_with = None
+                task.loop = items
             else:
                 raise AnsibleError("Failed to find the lookup named '%s' in the available lookup plugins" % task.loop_with)
         elif task.loop is not None:
             items = templar.template(task.loop)
+            # Update task.loop with templated items, this ensures that delegate_to+loop
+            # doesn't produce different restuls than TaskExecutor which may reprocess the loop
+            task.loop = items
         else:
             items = [None]
 
